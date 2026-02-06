@@ -16,7 +16,8 @@ define run_prod
 endef
 
 .PHONY: help init unseal seal audit policies all \
-	prod-init prod-unseal prod-seal prod-audit prod-policies prod-all
+	prod-init prod-unseal prod-seal prod-audit prod-policies prod-all \
+	test-clean test-clean-all test-start
 
 # Default target
 .DEFAULT_GOAL := help
@@ -40,6 +41,11 @@ help:
 	@echo "  make prod-audit    - Configure audit logging only (production)"
 	@echo "  make prod-policies - Configure policies only (production)"
 	@echo "  make prod-all      - Run complete configuration (production)"
+	@echo ""
+	@echo "Test environment (Docker):"
+	@echo "  make test-start     - Start test stack (./test-env-resources/start-test-env.sh)"
+	@echo "  make test-clean     - Stop and remove containers (keep raft-data)"
+	@echo "  make test-clean-all - Stop containers and delete raft-data (full reset)"
 
 # --- Test targets ---
 init:
@@ -90,3 +96,20 @@ prod-policies:
 prod-all:
 	@echo "Running complete Vault configuration (Production)..."
 	@$(call run_prod,playbooks/site.yml)
+
+# --- Test environment cleanup ---
+test-start:
+	@./test-env-resources/start-test-env.sh
+
+test-clean:
+	@echo "Stopping and removing test environment containers..."
+	@docker compose down --remove-orphans 2>/dev/null || docker-compose down --remove-orphans 2>/dev/null || true
+	@for c in vault-1 vault-2 vault-3 vault-1-init vault-2-init vault-3-init ldap-test ldap-init; do \
+	  docker rm -f $$c 2>/dev/null || true; \
+	done
+	@echo "Test environment stopped. Raft data kept in test-env-resources/raft-data/"
+
+test-clean-all: test-clean
+	@echo "Removing Raft data (full reset)..."
+	@rm -rf test-env-resources/raft-data/vault-1 test-env-resources/raft-data/vault-2 test-env-resources/raft-data/vault-3
+	@echo "Test environment fully cleaned. Run make test-start to start fresh."

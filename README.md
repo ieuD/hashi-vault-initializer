@@ -100,6 +100,12 @@ make        # or make help
 
 - `make prod-init`, `make prod-unseal`, `make prod-seal`, `make prod-audit`, `make prod-policies`, `make prod-all`
 
+**Test environment (Docker):**
+
+- `make test-start` – Start stack (same as `./test-env-resources/start-test-env.sh`)
+- `make test-clean` – Stop and remove containers; keep Raft data
+- `make test-clean-all` – Stop containers and delete Raft data (full reset)
+
 ## Roles
 
 ### vault-init
@@ -186,8 +192,8 @@ When `vault_policies_use_all: false`, only files listed in `vault_default_polici
 ## Test environment details
 
 - **Containers:** vault-1, vault-2, vault-3 (ports 18200, 18202, 18204), LDAP.
-- **Start:** `./test-env-resources/start-test-env.sh` or `docker compose up -d`
-- **Stop:** `docker compose down`
+- **Start:** `make test-start` or `./test-env-resources/start-test-env.sh` or `docker compose up -d`
+- **Stop / cleanup:** `make test-clean` (containers only) or `make test-clean-all` (containers + Raft data)
 - **Logs:** `docker compose logs -f vault-1`
 
 ## License
