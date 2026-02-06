@@ -1,0 +1,50 @@
+---
+# defaults file for vault-policies
+
+# Policy management settings
+vault_policies_source_dir: "{{ playbook_dir }}/policies"
+vault_policies_create_default: true
+vault_policies_update_existing: false
+vault_policies_validate_syntax: true
+
+# Default policies to create
+vault_default_policies:
+  - name: "admin"
+    content: |
+      # Admin policy - full access
+      path "*" {
+        capabilities = ["create", "read", "update", "delete", "list", "sudo"]
+      }
+
+  - name: "read-only"
+    content: |
+      # Read-only policy for all paths
+      path "*" {
+        capabilities = ["read", "list"]
+      }
+
+  - name: "app-secrets"
+    content: |
+      # Application secrets policy
+      path "secret/data/app/*" {
+        capabilities = ["create", "read", "update", "delete", "list"]
+      }
+      path "secret/metadata/app/*" {
+        capabilities = ["list", "read"]
+      }
+
+  - name: "kv-reader"
+    content: |
+      # KV secrets reader policy
+      path "secret/data/*" {
+        capabilities = ["read"]
+      }
+      path "secret/metadata/*" {
+        capabilities = ["read", "list"]
+      }
+
+# Custom policies (loaded from files or defined inline)
+vault_custom_policies: []
+
+# Policy file extension
+vault_policy_file_extension: ".hcl"

@@ -1,0 +1,28 @@
+---
+- name: Unseal Vault (Standalone)
+  hosts: vault_servers
+  gather_facts: true
+  become: false
+
+  vars_prompt:
+    - name: confirm_unseal
+      prompt: |
+
+        🔐 Vault Unseal Operation
+
+        This will attempt to unseal Vault using stored or provided unseal keys.
+
+        Target hosts: {{ ansible_play_hosts | join(', ') }}
+
+        Continue with unseal? (yes/no)
+      private: false
+      default: "no"
+
+  pre_tasks:
+    - name: Verify confirmation
+      fail:
+        msg: "Unseal operation cancelled by user"
+      when: confirm_unseal != 'yes'
+
+  roles:
+    - vault-unseal

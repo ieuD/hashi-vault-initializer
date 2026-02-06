@@ -1,0 +1,26 @@
+---
+- name: Unseal HashiCorp Vault
+  hosts: vault_servers
+  gather_facts: true
+  become: false
+
+  roles:
+    - vault-unseal
+
+  post_tasks:
+    - name: Display unseal completion message
+      debug:
+        msg: |
+          🔓 Vault Unseal Process Complete
+
+          Target: {{ vault_addr }}
+
+          Next steps:
+          - Login to Vault UI or CLI with root token
+          - Configure additional authentication methods
+          - Set up policies and secrets engines
+
+          Use other playbooks to continue Vault configuration:
+          - ansible-playbook -i inventories/test playbooks/audit.yml
+          - ansible-playbook -i inventories/test playbooks/policies.yml
+          - ansible-playbook -i inventories/test playbooks/auth.yml

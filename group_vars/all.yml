@@ -1,0 +1,65 @@
+# Ansible Vault Configuration
+# ===========================
+
+# Vault connection settings
+vault_addr: "http://localhost:8202"
+vault_token: ""
+vault_skip_verify: true
+
+# Vault initialization settings
+vault_key_threshold: 3
+vault_key_shares: 5
+vault_auto_unseal: false
+
+# Audit logging settings
+vault_audit_enabled: true
+vault_audit_device_type: "file"
+vault_audit_path: "/vault/logs/audit.log"
+vault_audit_description: "File-based audit logging"
+vault_audit_options:
+  file_path: "/vault/logs/audit.log"
+  log_raw: false
+  hmac_accessor: true
+  mode: "0600"
+
+# Policy settings
+vault_policies_dir: "policies"
+vault_default_policies:
+  - name: "admin"
+    content: |
+      # Admin policy - full access
+      path "*" {
+        capabilities = ["create", "read", "update", "delete", "list", "sudo"]
+      }
+  - name: "read-only"
+    content: |
+      # Read-only policy
+      path "*" {
+        capabilities = ["read", "list"]
+      }
+  - name: "app-policy"
+    content: |
+      # Application policy
+      path "secret/data/app/*" {
+        capabilities = ["create", "read", "update", "delete", "list"]
+      }
+      path "secret/metadata/app/*" {
+        capabilities = ["list"]
+      }
+
+# Authentication settings
+vault_auth_methods:
+  userpass:
+    enabled: true
+    path: "userpass"
+  approle:
+    enabled: false
+    path: "approle"
+
+# Secret engines
+vault_secret_engines:
+  kv:
+    enabled: true
+    path: "secret"
+    version: 2
+    description: "KV version 2 secret engine"

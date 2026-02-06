@@ -1,0 +1,24 @@
+---
+# defaults file for vault-audit
+
+# Audit device configuration
+vault_audit_devices:
+  - device_type: "file"
+    path: "file_audit"
+    description: "File-based audit logging"
+    options:
+      file_path: "/vault/logs/audit.log"
+      log_raw: false
+      hmac_accessor: true
+      mode: "0600"
+
+# Audit log directory settings
+vault_audit_log_dir: "/var/log/vault"
+vault_audit_log_owner: "vault"
+vault_audit_log_group: "vault"
+vault_audit_log_dir_mode: "0755"
+vault_audit_log_file_mode: "0600"
+
+# Audit device management
+vault_audit_force_enable: false
+vault_audit_remove_existing: false

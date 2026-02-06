@@ -1,0 +1,199 @@
+---
+# tasks file for vault-init
+
+- name: Check if Vault is already initialized
+  uri:
+    url: "{{ vault_addr }}/v1/sys/init"
+    method: GET
+    status_code: 200
+    validate_certs: "{{ not vault_skip_verify | default(true) }}"
+  register: vault_init_status
+  retries: "{{ vault_init_retries }}"
+  delay: "{{ vault_init_delay }}"
+  until: vault_init_status.status == 200
+
+- name: Display initialization status
+  debug:
+    msg: "Vault initialized: {{ vault_init_status.json.initialized }}"
+
+- name: Initialize Vault
+  uri:
+    url: "{{ vault_addr }}/v1/sys/init"
+    method: POST
+    body_format: json
+    body:
+      secret_shares: "{{ vault_key_shares }}"
+      secret_threshold: "{{ vault_key_threshold }}"
+    status_code: 200
+    validate_certs: "{{ not vault_skip_verify | default(true) }}"
+  register: vault_init_result
+  when: not vault_init_status.json.initialized or (vault_force_init | default(false) | bool)
+
+- name: Save unseal keys to file
+  copy:
+    content: |
+      # Vault Unseal Keys
+      # Generated on {{ ansible_date_time.iso8601 }}
+      {% for key in vault_init_result.json['keys'] %}
+      {{ key }}
+      {% endfor %}
+    dest: "{{ vault_unseal_keys_file }}"
+    mode: "0600"
+  when: vault_init_result.json is defined and vault_init_result.json['keys'] is defined
+  delegate_to: localhost
+
+- name: Save root token to file
+  copy:
+    content: "{{ vault_init_result.json.root_token }}"
+    dest: "{{ vault_root_token_file }}"
+    mode: "0600"
+  when: vault_init_result.json is defined and vault_init_result.json.root_token is defined
+  delegate_to: localhost
+
+- name: Check if unseal keys file exists
+  stat:
+    path: "{{ vault_unseal_keys_file }}"
+  register: unseal_keys_file_stat
+  delegate_to: localhost
+  when: vault_init_status.json.initialized and vault_init_result.json is not defined
+
+- name: Read unseal keys from file
+  slurp:
+    src: "{{ vault_unseal_keys_file }}"
+  register: unseal_keys_content
+  delegate_to: localhost
+  when:
+    - vault_init_status.json.initialized
+    - vault_init_result.json is not defined
+    - unseal_keys_file_stat.stat.exists | default(false)
+
+- name: Parse unseal keys from file
+  set_fact:
+    vault_unseal_keys: "{{ (unseal_keys_content.content | b64decode).split('\n') | select('match', '^[A-Za-z0-9+/=]+$') | list }}"
+  when: unseal_keys_content is defined and unseal_keys_content.content is defined
+
+- name: Warning when unseal keys not available
+  debug:
+    msg: |
+      WARNING: Vault is initialized but unseal keys file not found.
+      File: {{ vault_unseal_keys_file }}
+
+      If Vault is sealed, you'll need to:
+      1. Provide the unseal keys manually, or
+      2. Re-initialize with vault_force_init=true (destroys existing data!)
+  when:
+    - vault_init_status.json.initialized
+    - vault_init_result.json is not defined
+    - not (unseal_keys_file_stat.stat.exists | default(false))
+
+- name: Set unseal keys from initialization result
+  set_fact:
+    vault_unseal_keys: "{{ vault_init_result.json['keys'] }}"
+  when: vault_init_result.json is defined and vault_init_result.json['keys'] is defined
+
+- name: Check Vault seal status
+  uri:
+    url: "{{ vault_addr }}/v1/sys/seal-status"
+    method: GET
+    status_code: 200, 503
+    validate_certs: "{{ not vault_skip_verify | default(true) }}"
+  register: vault_seal_status
+
+- name: Display seal status
+  debug:
+    msg: "Vault sealed: {{ vault_seal_status.json.sealed | default(true) }}"
+
+- name: Unseal Vault
+  uri:
+    url: "{{ vault_addr }}/v1/sys/unseal"
+    method: POST
+    body_format: json
+    body:
+      key: "{{ item }}"
+    status_code: 200
+    validate_certs: "{{ not vault_skip_verify | default(true) }}"
+  register: unseal_result
+  with_items: "{{ vault_unseal_keys[:vault_key_threshold] }}"
+  when:
+    - vault_seal_status.json.sealed | default(true)
+    - vault_unseal_keys is defined
+    - vault_auto_unseal_on_init | default(true)
+
+- name: Check if root token file exists
+  stat:
+    path: "{{ vault_root_token_file }}"
+  register: root_token_file_stat
+  delegate_to: localhost
+
+- name: Read root token from file
+  slurp:
+    src: "{{ vault_root_token_file }}"
+  register: root_token_content
+  delegate_to: localhost
+  when:
+    - vault_init_result.json is not defined or vault_init_result.json.root_token is not defined
+    - root_token_file_stat.stat.exists | default(false)
+
+- name: Set root token from file
+  set_fact:
+    vault_root_token: "{{ root_token_content.content | b64decode | trim }}"
+  when: root_token_content is defined and root_token_content.content is defined
+
+- name: Set root token from initialization result
+  set_fact:
+    vault_root_token: "{{ vault_init_result.json.root_token }}"
+  when: vault_init_result.json is defined and vault_init_result.json.root_token is defined
+
+- name: Warning when root token not available
+  debug:
+    msg: |
+      WARNING: No root token available for health check.
+
+      Vault is initialized but root token file not found: {{ vault_root_token_file }}
+
+      The vault may be sealed. To proceed you'll need to:
+      1. Manually unseal with vault CLI, or
+      2. Re-initialize with vault_force_init=true (destroys data!)
+  when:
+    - vault_init_result.json is not defined or vault_init_result.json.root_token is not defined
+    - not (root_token_file_stat.stat.exists | default(false))
+
+- name: Verify Vault is ready
+  uri:
+    url: "{{ vault_addr }}/v1/sys/health"
+    method: GET
+    headers:
+      X-Vault-Token: "{{ vault_root_token }}"
+    status_code: 200
+    validate_certs: "{{ not vault_skip_verify | default(true) }}"
+  register: vault_health
+  retries: 5
+  delay: 5
+  when: vault_root_token is defined and vault_root_token != ""
+
+- name: Display Vault health status
+  debug:
+    msg: "Vault is ready and unsealed"
+  when:
+    - vault_health is defined
+    - vault_health is not skipped
+    - vault_health.status == 200
+
+- name: Display completion summary
+  debug:
+    msg: |
+      Vault initialization process completed!
+
+      {% if vault_root_token is defined and vault_root_token != "" %}
+      Status: ✅ Vault accessible with root token
+      {% else %}
+      Status: ⚠️  Vault initialized but token/keys not available for this session
+      {% endif %}
+
+      Vault Address: {{ vault_addr }}
+      Initialized: {{ vault_init_status.json.initialized }}
+      {% if vault_init_result.json is defined %}
+      New Initialization: Yes
+      Keys saved to: {{ vault_unseal_keys_file }}
+      Token saved to: {{ vault_root_token_file }}
+      {% endif %}

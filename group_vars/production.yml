@@ -1,0 +1,74 @@
+# Production Vault Environment Configuration
+# ========================================
+# This file overrides defaults for the production vault (port 8202)
+
+# Vault connection settings for production-like testing
+vault_addr: "http://localhost:8202" # Production vault (needs initialization)
+vault_token: "" # Will be set after initialization
+vault_skip_verify: true
+
+# Production initialization settings
+vault_key_threshold: 3 # Standard security
+vault_key_shares: 5 # Standard security
+vault_auto_unseal: true
+vault_force_init: false # Only init if not already done
+
+# Production audit logging settings
+vault_audit_enabled: true
+vault_audit_device_type: "file"
+vault_audit_path: "/vault/logs/audit.log"
+vault_audit_description: "Production audit logging"
+vault_audit_options:
+  file_path: "/vault/logs/audit.log"
+  log_raw: false # Less verbose for production
+  hmac_accessor: true # Security best practice
+  mode: "0600" # Restrictive permissions
+
+# Production policy settings
+vault_policies_dir: "policies"
+vault_policies_create_default: true
+vault_policies_update_existing: false # Prevent accidental updates
+vault_policies_validate_syntax: true
+
+# Standard production policies
+vault_default_policies:
+  - name: "admin"
+    content: |
+      # Admin policy - full access
+      path "*" {
+        capabilities = ["create", "read", "update", "delete", "list", "sudo"]
+      }
+
+  - name: "read-only"
+    content: |
+      # Read-only policy
+      path "*" {
+        capabilities = ["read", "list"]
+      }
+
+  - name: "app-secrets"
+    content: |
+      # Application secrets policy
+      path "secret/data/app/*" {
+        capabilities = ["create", "read", "update", "delete", "list"]
+      }
+      path "secret/metadata/app/*" {
+        capabilities = ["list", "read"]
+      }
+
+# Authentication methods
+vault_auth_methods:
+  userpass:
+    enabled: true
+    path: "userpass"
+  approle:
+    enabled: true
+    path: "approle"
+
+# Secret engines
+vault_secret_engines:
+  kv:
+    enabled: true
+    path: "secret"
+    version: 2
+    description: "KV version 2 secret engine"

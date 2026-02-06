@@ -1,0 +1,116 @@
+---
+# tasks file for vault-audit
+
+- name: Ensure Vault token is available
+  fail:
+    msg: "Vault root token is required for audit configuration"
+  when: vault_root_token is not defined or vault_root_token == ""
+
+- name: Create audit log directory
+  file:
+    path: "{{ vault_audit_log_dir }}"
+    state: directory
+    owner: "{{ vault_audit_log_owner | default('vault') }}"
+    group: "{{ vault_audit_log_group | default('vault') }}"
+    mode: "{{ vault_audit_log_dir_mode | default('0755') }}"
+  become: yes
+  when:
+    - vault_audit_log_dir is defined
+    - vault_audit_log_dir != "/tmp" # Skip for /tmp as it already exists
+
+- name: Check existing audit devices
+  uri:
+    url: "{{ vault_addr }}/v1/sys/audit"
+    method: GET
+    headers:
+      X-Vault-Token: "{{ vault_root_token }}"
+    status_code: 200
+    validate_certs: "{{ not vault_skip_verify | default(true) }}"
+  register: existing_audit_devices
+
+- name: Display existing audit devices
+  debug:
+    msg: "Existing audit devices: {{ existing_audit_devices.json.keys() | list }}"
+  when: existing_audit_devices.json is defined
+
+- name: Remove existing audit devices (if requested)
+  uri:
+    url: "{{ vault_addr }}/v1/sys/audit/{{ item }}"
+    method: DELETE
+    headers:
+      X-Vault-Token: "{{ vault_root_token }}"
+    status_code: 204
+    validate_certs: "{{ not vault_skip_verify | default(true) }}"
+  loop: "{{ existing_audit_devices.json.keys() | list }}"
+  when:
+    - vault_audit_remove_existing | default(false)
+    - existing_audit_devices.json is defined
+    - existing_audit_devices.json.keys() | length > 0
+
+- name: Enable audit devices
+  uri:
+    url: "{{ vault_addr }}/v1/sys/audit/{{ item.path }}"
+    method: PUT
+    headers:
+      X-Vault-Token: "{{ vault_root_token }}"
+    body_format: json
+    body:
+      type: "{{ item.device_type }}"
+      description: "{{ item.description | default('') }}"
+      options: "{{ item.options | default({}) }}"
+    status_code: 204
+    validate_certs: "{{ not vault_skip_verify | default(true) }}"
+  loop: "{{ vault_audit_devices }}"
+  when:
+    - vault_audit_devices is defined
+    - (item.path not in (existing_audit_devices.json.keys() | list)) or (vault_audit_force_enable | default(false))
+  register: audit_enable_result
+
+- name: Create audit log files with proper permissions
+  file:
+    path: "{{ item.options.file_path }}"
+    state: touch
+    owner: "{{ vault_audit_log_owner | default('vault') }}"
+    group: "{{ vault_audit_log_group | default('vault') }}"
+    mode: "{{ item.options.mode | default(vault_audit_log_file_mode) }}"
+  loop: "{{ vault_audit_devices }}"
+  become: yes
+  when:
+    - vault_audit_devices is defined
+    - item.device_type == 'file'
+    - item.options.file_path is defined
+
+- name: Verify audit devices are enabled
+  uri:
+    url: "{{ vault_addr }}/v1/sys/audit"
+    method: GET
+    headers:
+      X-Vault-Token: "{{ vault_root_token }}"
+    status_code: 200
+    validate_certs: "{{ not vault_skip_verify | default(true) }}"
+  register: final_audit_devices
+
+- name: Display enabled audit devices
+  debug:
+    msg: "Enabled audit devices: {{ final_audit_devices.json }}"
+  when: final_audit_devices.json is defined
+
+- name: Test audit logging (generate test entry)
+  uri:
+    url: "{{ vault_addr }}/v1/sys/health"
+    method: GET
+    headers:
+      X-Vault-Token: "{{ vault_root_token }}"
+    status_code: 200
+    validate_certs: "{{ not vault_skip_verify | default(true) }}"
+  register: audit_test
+  when: vault_audit_devices is defined and vault_audit_devices | length > 0
+
+- name: Audit configuration summary
+  debug:
+    msg: |
+      Audit Configuration Summary:
+      - Enabled devices: {{ final_audit_devices.json.keys() | list }}
+      - Log directory: {{ vault_audit_log_dir }}
+      - Test entry generated: {{ audit_test is defined and audit_test.status == 200 }}
+  when: final_audit_devices.json is defined

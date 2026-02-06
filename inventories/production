@@ -1,0 +1,5 @@
+[vault_servers]
+localhost ansible_connection=local
+
+[vault_servers:vars]
+vault_addr=http://localhost:8200

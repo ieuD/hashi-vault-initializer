@@ -1,0 +1,79 @@
+---
+# tasks file for vault-auth
+
+- name: Ensure Vault token is available
+  fail:
+    msg: "Vault root token is required for authentication configuration"
+  when: vault_root_token is not defined or vault_root_token == ""
+
+- name: Get existing auth methods
+  uri:
+    url: "{{ vault_addr }}/v1/sys/auth"
+    method: GET
+    headers:
+      X-Vault-Token: "{{ vault_root_token }}"
+    status_code: 200
+    validate_certs: "{{ not vault_skip_verify | default(true) }}"
+  register: existing_auth_methods
+
+- name: Display existing auth methods
+  debug:
+    msg: "Existing auth methods: {{ existing_auth_methods.json.keys() | list }}"
+
+- name: Enable auth methods
+  uri:
+    url: "{{ vault_addr }}/v1/sys/auth/{{ item.value.path }}"
+    method: POST
+    headers:
+      X-Vault-Token: "{{ vault_root_token }}"
+    body_format: json
+    body:
+      type: "{{ item.key }}"
+      description: "{{ item.value.description | default('') }}"
+    status_code: [200, 204, 400] # 400 if already exists
+    validate_certs: "{{ not vault_skip_verify | default(true) }}"
+  loop: "{{ vault_auth_methods | dict2items }}"
+  when:
+    - item.value.enabled | default(false)
+    - (item.value.path + '/') not in existing_auth_methods.json.keys() or vault_auth_force_enable | default(false)
+
+- name: Create test users (userpass)
+  uri:
+    url: "{{ vault_addr }}/v1/auth/userpass/users/{{ item.username }}"
+    method: POST
+    headers:
+      X-Vault-Token: "{{ vault_root_token }}"
+    body_format: json
+    body:
+      password: "{{ item.password }}"
+      policies: "{{ item.policies | join(',') }}"
+    status_code: [200, 204]
+    validate_certs: "{{ not vault_skip_verify | default(true) }}"
+  loop: "{{ vault_test_users | default([]) }}"
+  when:
+    - vault_test_users is defined
+    - vault_auth_methods.userpass.enabled | default(false)
+
+- name: Verify auth methods are enabled
+  uri:
+    url: "{{ vault_addr }}/v1/sys/auth"
+    method: GET
+    headers:
+      X-Vault-Token: "{{ vault_root_token }}"
+    status_code: 200
+    validate_certs: "{{ not vault_skip_verify | default(true) }}"
+  register: final_auth_methods
+
+- name: Display authentication configuration summary
+  debug:
+    msg: |
+      Authentication Configuration Summary:
+      - Enabled methods: {{ final_auth_methods.json.keys() | list }}
+      - Test users created: {{ vault_test_users | length | default(0) }}
+
+      {% if vault_test_users is defined and vault_test_users | length > 0 %}
+      Test Users:
+      {% for user in vault_test_users %}
+      - {{ user.username }}: {{ user.policies | join(', ') }}
+      {% endfor %}
+      {% endif %}

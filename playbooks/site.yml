@@ -1,0 +1,94 @@
+---
+- name: Complete HashiCorp Vault Setup
+  hosts: vault_servers
+  gather_facts: true
+  become: false
+
+  vars:
+    # Control which stages to run
+    run_init: true
+    run_unseal: true
+    run_audit: true
+    run_policies: true
+    run_auth: true
+
+  pre_tasks:
+    - name: Display setup overview
+      debug:
+        msg: |
+          🏗️  HashiCorp Vault Complete Setup
+
+          Target: {{ vault_addr }}
+          Stages to run:
+          {% if run_init %}  ✅ Initialize Vault{% else %}  ⏭️  Skip Initialization{% endif %}
+          {% if run_unseal %}  ✅ Unseal Vault{% else %}  ⏭️  Skip Unseal{% endif %}
+          {% if run_audit %}  ✅ Configure Audit Logging{% else %}  ⏭️  Skip Audit{% endif %}
+          {% if run_policies %}  ✅ Create Policies{% else %}  ⏭️  Skip Policies{% endif %}
+          {% if run_auth %}  ✅ Setup Authentication{% else %}  ⏭️  Skip Auth Methods{% endif %}
+
+  tasks:
+    # Stage 1: Initialize Vault
+    - name: Initialize Vault
+      include_role:
+        name: vault-init
+      when: run_init | default(true)
+      tags: ["init", "initialization"]
+
+    # Stage 2: Unseal Vault
+    - name: Unseal Vault
+      include_role:
+        name: vault-unseal
+      when: run_unseal | default(true)
+      tags: ["unseal"]
+
+    # Stage 3: Configure Audit Logging
+    - name: Configure Audit Logging
+      include_role:
+        name: vault-audit
+      when: run_audit | default(true)
+      tags: ["audit", "logging"]
+
+    # Stage 4: Create Policies
+    - name: Create Vault Policies
+      include_role:
+        name: vault-policies
+      when: run_policies | default(true)
+      tags: ["policies"]
+
+    # Stage 5: Setup Authentication
+    - name: Setup Authentication Methods
+      include_role:
+        name: vault-auth
+      when: run_auth | default(true)
+      tags: ["auth", "authentication"]
+
+  post_tasks:
+    - name: Display completion summary
+      debug:
+        msg: |
+          🎉 Vault Setup Complete!
+
+          Your HashiCorp Vault is now configured and ready for use.
+
+          Quick Access:
+          - Vault Address: {{ vault_addr }}
+          - UI Access: {{ vault_addr }}/ui
+
+          Available Authentication:
+          {% if run_auth %}
+          - Root Token (admin access)
+          - Username/Password (vault_admin_user)
+          {% else %}
+          - Root Token only
+          {% endif %}
+
+          Next Steps:
+          1. Save your root token and unseal keys securely
+          2. Create additional policies as needed
+          3. Configure secrets engines for your applications
+          4. Set up regular backup procedures
+
+          For individual operations, use:
+          - ansible-playbook playbooks/unseal-only.yml    # Unseal only
+          - ansible-playbook playbooks/audit-only.yml     # Audit config
+          - ansible-playbook playbooks/policies-only.yml  # Policy management

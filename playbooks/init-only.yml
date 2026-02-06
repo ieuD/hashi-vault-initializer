@@ -1,0 +1,24 @@
+---
+# Playbook for Vault initialization only
+- name: Initialize HashiCorp Vault
+  hosts: vault_servers
+  gather_facts: yes
+  become: no
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+
+  roles:
+    - role: vault-init
+
+  post_tasks:
+    - name: Display initialization summary
+      debug:
+        msg: |
+          Vault Initialization Complete!
+
+          Vault Address: {{ vault_addr }}
+          Root Token: {{ vault_root_token }}
+          Unseal Keys File: {{ vault_unseal_keys_file }}
+          Root Token File: {{ vault_root_token_file }}
+
+          IMPORTANT: Secure these files immediately!

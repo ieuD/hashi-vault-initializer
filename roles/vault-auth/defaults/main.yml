@@ -1,0 +1,17 @@
+---
+# defaults file for vault-auth
+vault_auth_methods:
+  userpass:
+    enabled: true
+    path: "userpass"
+    description: "Username/Password authentication"
+  approle:
+    enabled: false
+    path: "approle"
+    description: "AppRole authentication"
+
+# Test users to create (only if vault_environment is test)
+vault_test_users: []
+
+# Authentication settings
+vault_auth_force_enable: false

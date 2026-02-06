@@ -1,0 +1,109 @@
+# Test Environment Configuration
+# ===========================
+# This file overrides defaults for the test environment
+
+# Vault connection settings for test
+vault_addr: "http://localhost:8200" # Dev vault (pre-initialized)
+vault_token: "myroot" # Known dev root token
+vault_skip_verify: true
+
+# Test-specific initialization settings
+vault_key_threshold: 2 # Reduced for testing
+vault_key_shares: 3 # Reduced for testing
+vault_auto_unseal: true
+vault_force_init: false # Don't reinit dev vault
+
+# Test audit logging settings
+vault_audit_enabled: true
+vault_audit_device_type: "file"
+vault_audit_path: "/tmp/vault-audit-test.log"
+vault_audit_description: "Test environment audit logging"
+vault_audit_log_dir: "/tmp" # Use /tmp for testing (no sudo needed)
+vault_audit_options:
+  file_path: "/tmp/vault-audit-test.log"
+  log_raw: true # More verbose for testing
+  hmac_accessor: false # Easier debugging
+  mode: "0644" # More permissive for testing
+
+# Test policy settings
+vault_policies_dir: "policies"
+vault_policies_create_default: true
+vault_policies_update_existing: true # Allow updates in test
+vault_policies_validate_syntax: true
+
+# Test-specific policies
+vault_default_policies:
+  - name: "test-admin"
+    content: |
+      # Test admin policy - full access
+      path "*" {
+        capabilities = ["create", "read", "update", "delete", "list", "sudo"]
+      }
+
+  - name: "test-user"
+    content: |
+      # Test user policy - limited access
+      path "secret/data/test/*" {
+        capabilities = ["create", "read", "update", "delete", "list"]
+      }
+      path "secret/metadata/test/*" {
+        capabilities = ["list", "read"]
+      }
+
+  - name: "test-readonly"
+    content: |
+      # Test read-only policy
+      path "secret/data/test/*" {
+        capabilities = ["read", "list"]
+      }
+
+# Authentication methods for testing
+vault_auth_methods:
+  userpass:
+    enabled: true
+    path: "userpass"
+    description: "Username/Password auth for testing"
+  approle:
+    enabled: true
+    path: "approle"
+    description: "AppRole auth for testing"
+
+# Test secret engines
+vault_secret_engines:
+  kv:
+    enabled: true
+    path: "secret"
+    version: 2
+    description: "KV version 2 for test secrets"
+  database:
+    enabled: false # Disabled for simple testing
+
+# Test users and roles
+vault_test_users:
+  - username: "testuser"
+    password: "testpass123"
+    policies: ["test-user"]
+  - username: "admin"
+    password: "admin123"
+    policies: ["test-admin"]
+  - username: "readonly"
+    password: "readonly123"
+    policies: ["test-readonly"]
+
+# Test secrets to create
+vault_test_secrets:
+  - path: "secret/test/database"
+    data:
+      username: "testdb"
+      password: "testdbpass"
+      host: "localhost"
+      port: "5432"
+  - path: "secret/test/api"
+    data:
+      api_key: "test-api-key-12345"
+      endpoint: "https://api.test.com"
+  - path: "secret/test/config"
+    data:
+      environment: "test"
+      debug: "true"
+      log_level: "debug"

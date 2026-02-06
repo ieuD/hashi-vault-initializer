@@ -1,0 +1,17 @@
+# Vault Servers Group Variables
+# ============================
+# These variables apply to all vault servers
+
+# Vault connection settings
+vault_addr: "http://localhost:8202" # Default to prod vault for init
+vault_skip_verify: true
+
+# Initialization settings
+vault_key_threshold: 2
+vault_key_shares: 3
+vault_auto_unseal: true
+vault_force_init: false
+
+# File paths
+vault_unseal_keys_file: "{{ ansible_user_dir }}/.vault_keys"
+vault_root_token_file: "{{ ansible_user_dir }}/.vault_root_token"

@@ -1,0 +1,20 @@
+---
+# defaults file for vault-init
+vault_binary_path: "/usr/local/bin/vault"
+vault_config_dir: "/etc/vault.d"
+vault_data_dir: "/opt/vault/data"
+vault_log_dir: "/var/log/vault"
+vault_user: "vault"
+vault_group: "vault"
+
+# Initialization settings
+vault_init_retries: 5
+vault_init_delay: 10
+vault_force_init: false
+
+# Unseal settings
+vault_unseal_keys_file: "{{ ansible_facts['user_dir'] }}/.vault_keys"
+vault_auto_unseal_on_init: true
+
+# Root token settings
+vault_root_token_file: "{{ ansible_facts['user_dir'] }}/.vault_root_token"

@@ -1,0 +1,4 @@
+ansible>=8.0.0
+ansible-core>=2.15.0
+requests>=2.25.0
+pyyaml>=6.0

@@ -1,0 +1,46 @@
+---
+# Main playbook for complete Vault configuration
+- name: Configure HashiCorp Vault
+  hosts: vault_servers
+  gather_facts: yes
+  become: no
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+
+  roles:
+    - role: vault-init
+      tags:
+        - init
+        - vault-init
+
+    - role: vault-audit
+      tags:
+        - audit
+        - vault-audit
+
+    - role: vault-policies
+      tags:
+        - policies
+        - vault-policies
+
+  post_tasks:
+    - name: Display Vault configuration summary
+      debug:
+        msg: |
+          Vault Configuration Complete!
+
+          Vault Address: {{ vault_addr }}
+          Initialized: Yes
+          Unsealed: Yes
+          Audit Logging: {{ 'Enabled' if vault_audit_enabled else 'Disabled' }}
+          Policies Created: {{ vault_default_policies | length + (vault_custom_policies | default([])) | length }}
+
+          Root token saved to: {{ vault_root_token_file }}
+          Unseal keys saved to: {{ vault_unseal_keys_file }}
+
+          Next Steps:
+          1. Secure the root token and unseal keys
+          2. Create additional authentication methods
+          3. Configure secret engines as needed
+          4. Set up monitoring and backup procedures
+      tags: always

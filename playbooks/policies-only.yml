@@ -1,0 +1,29 @@
+---
+# Playbook for policy management only
+- name: Configure Vault Policies
+  hosts: vault_servers
+  gather_facts: yes
+  become: no
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+
+  pre_tasks:
+    - name: Check for root token
+      fail:
+        msg: "Root token is required. Set vault_root_token variable or ensure vault-init has been run."
+      when: vault_root_token is not defined or vault_root_token == ""
+
+  roles:
+    - role: vault-policies
+
+  post_tasks:
+    - name: Display policy configuration summary
+      debug:
+        msg: |
+          Vault Policy Configuration Complete!
+
+          Policies Directory: {{ vault_policies_source_dir }}
+          Default Policies: {{ vault_default_policies | map(attribute='name') | list }}
+          Custom Policies: {{ vault_custom_policies | default([]) | map(attribute='name') | list }}
+
+          Use 'vault policy list' to see all policies.

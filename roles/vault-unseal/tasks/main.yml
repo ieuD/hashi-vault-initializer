@@ -1,0 +1,120 @@
+---
+- name: Check Vault seal status
+  uri:
+    url: "{{ vault_addr }}/v1/sys/seal-status"
+    method: GET
+    validate_certs: "{{ not vault_skip_verify | default(true) }}"
+  register: vault_seal_status
+  retries: "{{ vault_unseal_retries | default(3) }}"
+  delay: "{{ vault_unseal_delay | default(5) }}"
+
+- name: Display current seal status
+  debug:
+    msg: "Vault sealed: {{ vault_seal_status.json.sealed | default(true) }}, Progress: {{ vault_seal_status.json.progress | default(0) }}/{{ vault_seal_status.json.t | default(vault_key_threshold) }}"
+
+- name: Skip unseal if already unsealed
+  debug:
+    msg: "Vault is already unsealed, skipping unseal process"
+  when:
+    - not vault_seal_status.json.sealed | default(true)
+    - not vault_force_unseal | default(false)
+
+- name: Check if unseal keys file exists
+  stat:
+    path: "{{ vault_unseal_keys_file }}"
+  register: unseal_keys_file_stat
+  delegate_to: localhost
+  when: vault_unseal_keys | length == 0
+
+- name: Read unseal keys from file
+  slurp:
+    src: "{{ vault_unseal_keys_file }}"
+  register: unseal_keys_content
+  delegate_to: localhost
+  when:
+    - vault_unseal_keys | length == 0
+    - unseal_keys_file_stat.stat.exists | default(false)
+
+- name: Parse unseal keys from file
+  set_fact:
+    vault_unseal_keys: "{{ (unseal_keys_content.content | b64decode | from_json) }}"
+  when:
+    - unseal_keys_content is defined
+    - unseal_keys_content.content is defined
+
+- name: Warning when unseal keys not available
+  debug:
+    msg: |
+      WARNING: No unseal keys available.
+
+      Checked file: {{ vault_unseal_keys_file }}
+      Keys provided: {{ vault_unseal_keys | length }}
+
+      To unseal Vault, you need to:
+      1. Provide keys via vault_unseal_keys variable, or
+      2. Ensure unseal keys file exists with proper JSON format
+
+      Expected JSON format: ["key1", "key2", "key3", ...]
+  when:
+    - vault_unseal_keys | length == 0
+    - not (unseal_keys_file_stat.stat.exists | default(false))
+
+- name: Verify sufficient unseal keys
+  assert:
+    that:
+      - vault_unseal_keys | length >= (vault_key_threshold | int)
+    fail_msg: "Insufficient unseal keys. Need {{ vault_key_threshold }}, have {{ vault_unseal_keys | length }}"
+    success_msg: "Sufficient unseal keys available ({{ vault_unseal_keys | length }}/{{ vault_key_threshold }})"
+  when:
+    - vault_seal_status.json.sealed | default(true) or vault_force_unseal | default(false)
+    - vault_unseal_keys | length > 0
+
+- name: Unseal Vault with keys
+  uri:
+    url: "{{ vault_addr }}/v1/sys/unseal"
+    method: POST
+    body_format: json
+    body:
+      key: "{{ item }}"
+    validate_certs: "{{ not vault_skip_verify | default(true) }}"
+    status_code: 200
+  register: unseal_result
+  with_items: "{{ vault_unseal_keys[:(vault_key_threshold | int)] }}"
+  when:
+    - vault_seal_status.json.sealed | default(true) or vault_force_unseal | default(false)
+    - vault_unseal_keys | length >= (vault_key_threshold | int)
+    - vault_auto_unseal | default(true)
+
+- name: Verify Vault is unsealed
+  uri:
+    url: "{{ vault_addr }}/v1/sys/seal-status"
+    method: GET
+    validate_certs: "{{ not vault_skip_verify | default(true) }}"
+  register: final_seal_status
+  retries: "{{ vault_unseal_retries | default(3) }}"
+  delay: 2
+  when: unseal_result is defined
+
+- name: Display final unseal status
+  debug:
+    msg: |
+      Vault unseal completed!
+
+      Status: {{ 'Unsealed' if not final_seal_status.json.sealed else 'Still Sealed' }}
+      Progress: {{ final_seal_status.json.progress | default(0) }}/{{ final_seal_status.json.t | default(vault_key_threshold) }}
+      Vault Version: {{ final_seal_status.json.version | default('unknown') }}
+
+      {% if not final_seal_status.json.sealed %}
+      ✅ Vault is now ready for use!
+      {% else %}
+      ❌ Vault is still sealed. Check unseal keys and try again.
+      {% endif %}
+  when: final_seal_status is defined
+
+- name: Fail if Vault is still sealed after unseal attempt
+  fail:
+    msg: "Vault unseal failed. Vault is still sealed after providing {{ vault_key_threshold }} keys."
+  when:
+    - final_seal_status is defined
+    - final_seal_status.json.sealed | default(true)
+    - vault_auto_unseal | default(true)
